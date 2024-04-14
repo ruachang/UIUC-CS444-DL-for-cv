@@ -57,7 +57,11 @@ def ls_discriminator_loss(scores_real, scores_fake):
     - loss: A PyTorch Tensor containing the loss.
     """
 
-    loss = None
+    
+    loss_real = 0.5 * torch.mean((scores_real - 1) ** 2, dim=0)
+    loss_fake = 0.5 * torch.mean(scores_fake ** 2, dim=0)
+
+    loss = loss_real + loss_fake
 
     return loss
 
@@ -72,13 +76,50 @@ def ls_generator_loss(scores_fake):
     Outputs:
     - loss: A PyTorch Tensor containing the loss.
     """
-
-    loss = None
-
-    ####################################
-    #          YOUR CODE HERE          #
-    ####################################
-
-    ##########       END      ##########
+    loss = 0.5 * torch.mean((scores_fake - 1) ** 2, dim=0)
 
     return loss
+
+def wassertein_descriminator_loss(scores_real, scores_fake):
+
+    loss = torch.mean(scores_fake, dim=0) - torch.mean(scores_real, dim=0)
+
+    return loss
+
+def wassertein_generator_loss(scores_fake):
+    return -torch.mean(scores_fake, dim=0)
+
+def wassertein_gp_descriminator_loss(D, scores_real, scores_fake, real_data, fake_data, lambda_gp=10):
+    batch_size, c, h, w = real_data.size
+    epsilon = torch.randn(batch_size).to(real_data.device)
+    epsilon = epsilon.view(batch_size, c, h, w)
+    x_sample = epsilon * real_data + (1 - epsilon) * fake_data
+    x_sample.requires_grad = True
+    scores_sample = D(x_sample)
+    gradients = torch.autograd.grad(
+        outputs=scores_sample, 
+        inputs=x_sample,
+        grad_outputs=torch.ones_like(scores_sample),
+        create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradients = gradients.view(batch_size, -1)
+    gradient_penalty = lambda_gp * ((gradients.norm(dim=1) - 1) ** 2).mean()
+    loss = torch.mean(scores_fake, dim=0) - torch.mean(scores_real, dim=0) + gradient_penalty
+    return loss
+
+def wassertein_descriminator_loss_split(scores):
+    return torch.mean(scores, dim=0)
+
+def gradient_gp_loss(D, real_data, fake_data, lambda_gp=10):
+    batch_size, c, h, w = real_data.size()
+    epsilon = torch.rand(batch_size, 1, 1, 1).to(real_data.device)
+    x_hat = epsilon * real_data + (1 - epsilon) * fake_data
+    x_hat.requires_grad = True
+    scores = D(x_hat)
+    gradients = torch.autograd.grad(
+        outputs=scores, 
+        inputs=x_hat,
+        grad_outputs=torch.ones_like(scores),
+        create_graph=True, retain_graph=True, only_inputs=True)[0]
+    gradients = gradients.view(batch_size, -1)
+    gradient_penalty = lambda_gp * ((gradients.norm(dim=1) - 1) ** 2).mean()
+    return gradient_penalty
